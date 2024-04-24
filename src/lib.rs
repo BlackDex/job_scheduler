@@ -7,8 +7,11 @@
     trivial_casts,
     trivial_numeric_casts,
     unused_import_braces,
+    unused,
     clippy::cast_lossless,
     clippy::clone_on_ref_ptr,
+    clippy::complexity,
+    clippy::correctness,
     clippy::equatable_if_let,
     clippy::float_cmp_const,
     clippy::inefficient_to_string,
@@ -21,8 +24,12 @@
     clippy::manual_string_new,
     clippy::match_wildcard_for_single_variants,
     clippy::mem_forget,
+    clippy::nursery,
+    clippy::perf,
     clippy::string_add_assign,
     clippy::string_to_string,
+    clippy::style,
+    clippy::suspicious,
     clippy::unnecessary_join,
     clippy::unnecessary_self_imports,
     clippy::unused_async,
@@ -70,18 +77,21 @@
 //!
 //! ```rust,ignore
 //! use job_scheduler_ng::{JobScheduler, Job};
-//! use std::time::Duration;
+//! use core::time::Duration;
 //!
 //! fn main() {
 //!     let mut sched = JobScheduler::new();
 //!
-//!     sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
-//!         println!("I get executed every 10 seconds!");
+//!     sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+//!         println!("I get executed every 10th second!");
+//!     }));
+//!
+//!     sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+//!         println!("I get executed every 4 seconds!");
 //!     }));
 //!
 //!     loop {
 //!         sched.tick();
-//!
 //!         std::thread::sleep(Duration::from_millis(500));
 //!     }
 //! }
@@ -109,13 +119,12 @@ impl<'a> Job<'a> {
     /// let s: Schedule = "0 15 6,8,10 * Mar,Jun Fri 2017".into().unwrap();
     /// Job::new(s, || println!("I have a complex schedule...") );
     /// ```
-    pub fn new<T>(schedule: Schedule, run: T) -> Job<'a>
+    #[inline]
+    pub fn new<T>(schedule: Schedule, run: T) -> Self
     where
-        T: 'a,
-        T: FnMut(),
-        T: FnMut() + Send,
+        T: FnMut() + Send + 'a,
     {
-        Job {
+        Self {
             schedule,
             run: Box::new(run),
             last_tick: None,
@@ -161,6 +170,7 @@ impl<'a> Job<'a> {
     /// });
     /// job.limit_missed_runs(99);
     /// ```
+    #[inline]
     pub fn limit_missed_runs(&mut self, limit: usize) {
         self.limit_missed_runs = limit;
     }
@@ -173,6 +183,7 @@ impl<'a> Job<'a> {
     /// });
     /// job.last_tick(Some(Utc::now()));
     /// ```
+    #[inline]
     pub fn last_tick(&mut self, last_tick: Option<DateTime<Utc>>) {
         self.last_tick = last_tick;
     }
@@ -186,8 +197,10 @@ pub struct JobScheduler<'a> {
 
 impl<'a> JobScheduler<'a> {
     /// Create a new `JobScheduler`.
-    pub fn new() -> JobScheduler<'a> {
-        JobScheduler { jobs: Vec::new() }
+    #[inline]
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { jobs: Vec::new() }
     }
 
     /// Add a job to the `JobScheduler`
@@ -198,6 +211,7 @@ impl<'a> JobScheduler<'a> {
     ///     println!("I get executed every 10 seconds!");
     /// }));
     /// ```
+    #[inline]
     pub fn add(&mut self, job: Job<'a>) -> Uuid {
         let job_id = job.job_id;
         self.jobs.push(job);
@@ -214,6 +228,7 @@ impl<'a> JobScheduler<'a> {
     /// }));
     /// sched.remove(job_id);
     /// ```
+    #[inline]
     pub fn remove(&mut self, job_id: Uuid) -> bool {
         let mut found_index = None;
         for (i, job) in self.jobs.iter().enumerate() {
@@ -240,6 +255,7 @@ impl<'a> JobScheduler<'a> {
     ///     std::thread::sleep(Duration::from_millis(500));
     /// }
     /// ```
+    #[inline]
     pub fn tick(&mut self) {
         for job in &mut self.jobs {
             job.tick();
@@ -256,14 +272,15 @@ impl<'a> JobScheduler<'a> {
     ///     std::thread::sleep(sched.time_till_next_job());
     /// }
     /// ```
-    pub fn time_till_next_job(&self) -> std::time::Duration {
+    #[inline]
+    pub fn time_till_next_job(&self) -> core::time::Duration {
         if self.jobs.is_empty() {
             // Take a guess if there are no jobs.
-            return std::time::Duration::from_millis(500);
+            return core::time::Duration::from_millis(500);
         }
         let mut duration = Duration::zero();
         let now = Utc::now();
-        for job in self.jobs.iter() {
+        for job in &self.jobs {
             for event in job.schedule.upcoming(offset::Utc).take(1) {
                 let d = event - now;
                 if duration.is_zero() || d < duration {

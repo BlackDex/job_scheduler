@@ -9,6 +9,16 @@ This is a fork which i try to maintain and maybe even improve where needed.
 
 ## Updates
 
+**2024-04-24 (v2.0.5):**
+ - Set MSRV to v1.61.0 to match chrono's v0.4.34 MSRV
+ - Updated dev dependency of tokio to v1.37.0 or higher
+ - Several clippy check added
+ - Fixed all clippy reported items
+ - Set JobScheduler::new() as `const fn`
+ - Updated examples to use a `log` function and always print the current thread id
+ - Added a very simple hash to better differentiate the tokio 5th second example
+
+
 **2023-02-01 (v2.0.4):**
  - Validated uuid v1.3.0 works
  - Used miri to check examples
