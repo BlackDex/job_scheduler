@@ -57,8 +57,32 @@
 //!     }
 //! }
 //! ```
+//!
+//! Setting a custom timezone other then the default UTC
+//! Any `Tz::Offset` provided by chrono will work.
+//!
+//! //! ```rust,ignore
+//! use chrono::Local;
+//! use job_scheduler_ng::{JobScheduler, Job};
+//! use core::time::Duration;
+//!
+//! fn main() {
+//!     let mut sched = JobScheduler::new();
+//!     let local_tz = chrono::Local::now();
+//!     sched.set_timezone(*local_tz.offset());
+//!
+//!     sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
+//!         println!("I get executed every day 13:05 local time!");
+//!     }));
+//!
+//!     loop {
+//!         sched.tick();
+//!         std::thread::sleep(Duration::from_millis(500));
+//!     }
+//! }
+//! ```
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 pub use cron::Schedule;
 pub use uuid::Uuid;
 
@@ -66,9 +90,10 @@ pub use uuid::Uuid;
 pub struct Job<'a> {
     schedule: Schedule,
     run: Box<dyn (FnMut()) + Send + 'a>,
-    last_tick: Option<DateTime<Utc>>,
+    last_tick: Option<DateTime<FixedOffset>>,
     limit_missed_runs: usize,
     job_id: Uuid,
+    tz: FixedOffset,
 }
 
 impl<'a> Job<'a> {
@@ -91,32 +116,27 @@ impl<'a> Job<'a> {
             last_tick: None,
             limit_missed_runs: 1,
             job_id: Uuid::new_v4(),
+            tz: FixedOffset::east_opt(0).unwrap(),
         }
     }
 
     fn tick(&mut self) {
-        let now = Utc::now();
-        if self.last_tick.is_none() {
-            self.last_tick = Some(now);
-            return;
-        }
-        if self.limit_missed_runs > 0 {
-            for event in self
-                .schedule
-                .after(&self.last_tick.unwrap())
-                .take(self.limit_missed_runs)
-            {
-                if event > now {
-                    break;
+        let now = Utc::now().with_timezone(&self.tz);
+        if let Some(last_tick) = self.last_tick {
+            if self.limit_missed_runs > 0 {
+                for event in self.schedule.after(&last_tick).take(self.limit_missed_runs) {
+                    if event > now {
+                        break;
+                    }
+                    (self.run)();
                 }
-                (self.run)();
-            }
-        } else {
-            for event in self.schedule.after(&self.last_tick.unwrap()) {
-                if event > now {
-                    break;
+            } else {
+                for event in self.schedule.after(&last_tick) {
+                    if event > now {
+                        break;
+                    }
+                    (self.run)();
                 }
-                (self.run)();
             }
         }
 
@@ -145,15 +165,21 @@ impl<'a> Job<'a> {
     /// job.last_tick(Some(Utc::now()));
     /// ```
     #[inline]
-    pub fn last_tick(&mut self, last_tick: Option<DateTime<Utc>>) {
+    pub fn last_tick(&mut self, last_tick: Option<DateTime<FixedOffset>>) {
         self.last_tick = last_tick;
     }
 }
 
-#[derive(Default)]
 /// The JobScheduler contains and executes the scheduled jobs.
 pub struct JobScheduler<'a> {
     jobs: Vec<Job<'a>>,
+    tz: FixedOffset,
+}
+
+impl Default for JobScheduler<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> JobScheduler<'a> {
@@ -161,7 +187,24 @@ impl<'a> JobScheduler<'a> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self { jobs: Vec::new() }
+        Self {
+            jobs: Vec::new(),
+            tz: FixedOffset::east_opt(0).unwrap(),
+        }
+    }
+
+    /// Set a custom timezone other then the default UTC.
+    ///
+    /// ```rust,ignore
+    /// let mut sched = JobScheduler::new();
+    /// let local_tz = chrono::Local::now();
+    /// sched.set_timezone(*local_tz.offset());
+    /// sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
+    ///     println!("I get executed every day 13:05 local time!");
+    /// }));
+    /// ```
+    pub fn set_timezone(&mut self, tz: FixedOffset) {
+        self.tz = tz;
     }
 
     /// Add a job to the `JobScheduler`
@@ -175,6 +218,9 @@ impl<'a> JobScheduler<'a> {
     #[inline]
     pub fn add(&mut self, job: Job<'a>) -> Uuid {
         let job_id = job.job_id;
+
+        let mut job = job;
+        job.tz = self.tz;
         self.jobs.push(job);
 
         job_id
@@ -239,10 +285,11 @@ impl<'a> JobScheduler<'a> {
             // Take a guess if there are no jobs.
             return core::time::Duration::from_millis(500);
         }
+        let tz = self.tz;
         let mut duration = Duration::zero();
-        let now = Utc::now();
+        let now = Utc::now().with_timezone(&tz);
         for job in &self.jobs {
-            for event in job.schedule.upcoming(Utc).take(1) {
+            for event in job.schedule.upcoming(tz).take(1) {
                 let d = event - now;
                 if duration.is_zero() || d < duration {
                     duration = d;

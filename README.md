@@ -9,6 +9,17 @@ This is a fork which i try to maintain and maybe even improve where needed.
 
 ## Updates
 
+**2025-04-13 (v2.2.0):**
+ - Should be backwards compatible with previous versions
+ - Set MSRV to v1.65.0 to match the lowest dependency
+ - Updated dependencies to the lowest possible version
+ - Added an option to use a different timezone, default is still UTC
+ - Added an example test for the timezone functionality
+
+**2024-12-15 (v2.1.0 / unreleased):**
+ - Updated dependencies
+ - Added and fixed some clippy lints
+
 **2024-04-24 (v2.0.5):**
  - Set MSRV to v1.61.0 to match chrono's v0.4.34 MSRV
  - Updated dev dependency of tokio to v1.37.0 or higher
@@ -17,7 +28,6 @@ This is a fork which i try to maintain and maybe even improve where needed.
  - Set JobScheduler::new() as `const fn`
  - Updated examples to use a `log` function and always print the current thread id
  - Added a very simple hash to better differentiate the tokio 5th second example
-
 
 **2023-02-01 (v2.0.4):**
  - Validated uuid v1.3.0 works
@@ -88,6 +98,30 @@ fn main() {
     loop {
         sched.tick();
 
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+```
+
+Setting a custom timezone other then the default UTC.
+Any `Tz::Offset` provided by chrono will work.
+
+```rust
+use chrono::Local;
+use job_scheduler_ng::{JobScheduler, Job};
+use core::time::Duration;
+
+fn main() {
+    let mut sched = JobScheduler::new();
+    let local_tz = chrono::Local::now();
+    sched.set_timezone(*local_tz.offset());
+
+    sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
+        println!("I get executed every day 13:05 local time!");
+    }));
+
+    loop {
+        sched.tick();
         std::thread::sleep(Duration::from_millis(500));
     }
 }
