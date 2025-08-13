@@ -6,11 +6,11 @@ fn main() {
 
     let mut sched = JobScheduler::new();
 
-    sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 10th second!");
     }));
 
-    sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("*/4 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 4 seconds!");
     }));
 

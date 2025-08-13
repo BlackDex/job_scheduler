@@ -1,10 +1,10 @@
-//! # JobScheduler
+//! # `JobScheduler`
 //!
 //! A simple cron-like job scheduling library for Rust.
 //!
 //! ## Usage
 //!
-//! Be sure to add the job_scheduler_ng crate to your `Cargo.toml`:
+//! Be sure to add the `job_scheduler_ng` crate to your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
@@ -36,49 +36,45 @@
 //!
 //! A simple usage example:
 //!
-//! ```rust,ignore
+//! ```no_run
 //! use job_scheduler_ng::{JobScheduler, Job};
 //! use core::time::Duration;
 //!
-//! fn main() {
-//!     let mut sched = JobScheduler::new();
+//! let mut sched = JobScheduler::new();
 //!
-//!     sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
-//!         println!("I get executed every 10th second!");
-//!     }));
+//! sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+//!     println!("I get executed every 10th second!");
+//! }));
 //!
-//!     sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
-//!         println!("I get executed every 4 seconds!");
-//!     }));
+//! sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+//!     println!("I get executed every 4 seconds!");
+//! }));
 //!
-//!     loop {
-//!         sched.tick();
-//!         std::thread::sleep(Duration::from_millis(500));
-//!     }
+//! loop {
+//!     sched.tick();
+//!     std::thread::sleep(Duration::from_millis(500));
 //! }
 //! ```
 //!
 //! Setting a custom timezone other then the default UTC
 //! Any `Tz::Offset` provided by chrono will work.
 //!
-//! //! ```rust,ignore
+//! ```no_run
 //! use chrono::Local;
 //! use job_scheduler_ng::{JobScheduler, Job};
 //! use core::time::Duration;
 //!
-//! fn main() {
-//!     let mut sched = JobScheduler::new();
-//!     let local_tz = chrono::Local::now();
-//!     sched.set_timezone(*local_tz.offset());
+//! let mut sched = JobScheduler::new();
+//! let local_tz = Local::now();
+//! sched.set_timezone(*local_tz.offset());
 //!
-//!     sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
-//!         println!("I get executed every day 13:05 local time!");
-//!     }));
+//! sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
+//!     println!("I get executed every day 13:05 local time!");
+//! }));
 //!
-//!     loop {
-//!         sched.tick();
-//!         std::thread::sleep(Duration::from_millis(500));
-//!     }
+//! loop {
+//!     sched.tick();
+//!     std::thread::sleep(Duration::from_millis(500));
 //! }
 //! ```
 
@@ -89,9 +85,10 @@ pub use uuid::Uuid;
 /// A schedulable `Job`.
 pub struct Job<'a> {
     schedule: Schedule,
-    run: Box<dyn (FnMut()) + Send + 'a>,
+    run: Box<dyn FnMut() + Send + 'a>,
     last_tick: Option<DateTime<FixedOffset>>,
     limit_missed_runs: usize,
+    #[allow(clippy::struct_field_names)]
     job_id: Uuid,
     tz: FixedOffset,
 }
@@ -99,13 +96,16 @@ pub struct Job<'a> {
 impl<'a> Job<'a> {
     /// Create a new job.
     ///
-    /// ```rust,ignore
+    /// ```rust
+    /// use cron::Schedule;
+    /// use job_scheduler_ng::Job;
     /// // Run at second 0 of the 15th minute of the 6th, 8th, and 10th hour
-    /// // of any day in March and June that is a Friday of the year 2017.
-    /// let s: Schedule = "0 15 6,8,10 * Mar,Jun Fri 2017".into().unwrap();
+    /// // of any day in March and June that is a Friday of the year 2025.
+    /// let s: Schedule = "0 15 6,8,10 * Mar,Jun Fri 2025".parse().unwrap();
     /// Job::new(s, || println!("I have a complex schedule...") );
     /// ```
     #[inline]
+    #[expect(clippy::missing_panics_doc, reason = "infallible")]
     pub fn new<T>(schedule: Schedule, run: T) -> Self
     where
         T: FnMut() + Send + 'a,
@@ -116,7 +116,7 @@ impl<'a> Job<'a> {
             last_tick: None,
             limit_missed_runs: 1,
             job_id: Uuid::new_v4(),
-            tz: FixedOffset::east_opt(0).unwrap(),
+            tz: FixedOffset::east_opt(0).expect("Valid FixedOffset for UTC"),
         }
     }
 
@@ -145,7 +145,8 @@ impl<'a> Job<'a> {
 
     /// Set the limit for missed jobs in the case of delayed runs. Setting to 0 means unlimited.
     ///
-    /// ```rust,ignore
+    /// ```rust
+    /// use job_scheduler_ng::Job;
     /// let mut job = Job::new("0/1 * * * * *".parse().unwrap(), || {
     ///     println!("I get executed every 1 seconds!");
     /// });
@@ -158,11 +159,14 @@ impl<'a> Job<'a> {
 
     /// Set last tick to force re-running of missed runs.
     ///
-    /// ```rust,ignore
+    /// ```rust
+    /// use job_scheduler_ng::Job;
+    /// use chrono::{Local, Utc};
     /// let mut job = Job::new("0/1 * * * * *".parse().unwrap(), || {
     ///     println!("I get executed every 1 seconds!");
     /// });
-    /// job.last_tick(Some(Utc::now()));
+    /// let local_tz = Local::now();
+    /// job.last_tick(Some(Utc::now().with_timezone(local_tz.offset())));
     /// ```
     #[inline]
     pub fn last_tick(&mut self, last_tick: Option<DateTime<FixedOffset>>) {
@@ -170,7 +174,7 @@ impl<'a> Job<'a> {
     }
 }
 
-/// The JobScheduler contains and executes the scheduled jobs.
+/// The `JobScheduler` contains and executes the scheduled jobs.
 pub struct JobScheduler<'a> {
     jobs: Vec<Job<'a>>,
     tz: FixedOffset,
@@ -186,18 +190,21 @@ impl<'a> JobScheduler<'a> {
     /// Create a new `JobScheduler`.
     #[inline]
     #[must_use]
+    #[expect(clippy::missing_panics_doc, reason = "infallible")]
     pub const fn new() -> Self {
         Self {
             jobs: Vec::new(),
-            tz: FixedOffset::east_opt(0).unwrap(),
+            tz: FixedOffset::east_opt(0).expect("Valid FixedOffset for UTC"),
         }
     }
 
     /// Set a custom timezone other then the default UTC.
     ///
-    /// ```rust,ignore
+    /// ```rust
+    /// use job_scheduler_ng::{JobScheduler, Job};
+    /// use chrono::Local;
     /// let mut sched = JobScheduler::new();
-    /// let local_tz = chrono::Local::now();
+    /// let local_tz = Local::now();
     /// sched.set_timezone(*local_tz.offset());
     /// sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
     ///     println!("I get executed every day 13:05 local time!");
@@ -209,7 +216,8 @@ impl<'a> JobScheduler<'a> {
 
     /// Add a job to the `JobScheduler`
     ///
-    /// ```rust,ignore
+    /// ```rust
+    /// use job_scheduler_ng::{JobScheduler, Job};
     /// let mut sched = JobScheduler::new();
     /// sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
     ///     println!("I get executed every 10 seconds!");
@@ -228,7 +236,8 @@ impl<'a> JobScheduler<'a> {
 
     /// Remove a job from the `JobScheduler`
     ///
-    /// ```rust,ignore
+    /// ```rust
+    /// use job_scheduler_ng::{JobScheduler, Job};
     /// let mut sched = JobScheduler::new();
     /// let job_id = sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
     ///     println!("I get executed every 10 seconds!");
@@ -252,11 +261,14 @@ impl<'a> JobScheduler<'a> {
         found_index.is_some()
     }
 
-    /// The `tick` method increments time for the JobScheduler and executes
+    /// The `tick` method increments time for the `JobScheduler` and executes
     /// any pending jobs. It is recommended to sleep for at least 500
     /// milliseconds between invocations of this method.
     ///
-    /// ```rust,ignore
+    /// ```no_run
+    /// use job_scheduler_ng::JobScheduler;
+    /// use core::time::Duration;
+    /// let mut sched = JobScheduler::new();
     /// loop {
     ///     sched.tick();
     ///     std::thread::sleep(Duration::from_millis(500));
@@ -273,29 +285,28 @@ impl<'a> JobScheduler<'a> {
     /// is supposed to run. This can be used to sleep until then without waking
     /// up at a fixed interval.AsMut
     ///
-    /// ```rust, ignore
+    /// ```no_run
+    /// use job_scheduler_ng::JobScheduler;
+    /// let mut sched = JobScheduler::new();
     /// loop {
     ///     sched.tick();
     ///     std::thread::sleep(sched.time_till_next_job());
     /// }
     /// ```
     #[inline]
+    #[must_use]
     pub fn time_till_next_job(&self) -> core::time::Duration {
         if self.jobs.is_empty() {
             // Take a guess if there are no jobs.
             return core::time::Duration::from_millis(500);
         }
         let tz = self.tz;
-        let mut duration = Duration::zero();
         let now = Utc::now().with_timezone(&tz);
-        for job in &self.jobs {
-            for event in job.schedule.upcoming(tz).take(1) {
-                let d = event - now;
-                if duration.is_zero() || d < duration {
-                    duration = d;
-                }
-            }
-        }
-        duration.to_std().unwrap()
+        let durations = self.jobs.iter().filter_map(|job| {
+            job.schedule.upcoming(tz).next().map(|event| event - now)
+        });
+
+        let duration = durations.min().unwrap_or(Duration::zero());
+        duration.to_std().unwrap_or(core::time::Duration::ZERO)
     }
 }

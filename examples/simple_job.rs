@@ -1,4 +1,3 @@
-use core::time::Duration;
 use job_scheduler_ng::{Job, JobScheduler};
 use std::time::Instant;
 
@@ -7,11 +6,11 @@ fn main() {
 
     let mut sched = JobScheduler::new();
 
-    sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 10th second!");
     }));
 
-    sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("*/4 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 4 seconds!");
     }));
 
@@ -21,7 +20,7 @@ fn main() {
     loop {
         sched.tick();
 
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(sched.time_till_next_job());
 
         // Check if we have waited long enough
         if start.elapsed().as_secs() >= WAIT_SECONDS {

@@ -17,7 +17,13 @@ async fn main() {
 
 fn init_scheduler() {
     // Start a new runtime to not mess with the current running one
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to create Tokio runtime: {e:?}");
+            return
+        }
+    };
 
     std::thread::Builder::new()
         .name(String::from("job-scheduler"))
@@ -26,19 +32,19 @@ fn init_scheduler() {
 
             let mut sched = JobScheduler::new();
 
-            sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+            sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
                 log("I get executed every 10th second!");
             }));
 
-            sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+            sched.add(Job::new("*/4 * * * * *".parse().expect("Valid schedule"), || {
                 log("I get executed every 4 seconds!");
             }));
 
-            sched.add(Job::new("0/5 * * * * *".parse().unwrap(), || {
+            sched.add(Job::new("0/5 * * * * *".parse().expect("Valid schedule"), || {
                 runtime.spawn(test_job_every_five());
             }));
 
-            sched.add(Job::new("*/8 * * * * *".parse().unwrap(), || {
+            sched.add(Job::new("*/8 * * * * *".parse().expect("Valid schedule"), || {
                 runtime.spawn(test_job_every_eight());
             }));
 

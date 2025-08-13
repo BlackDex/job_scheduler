@@ -16,15 +16,15 @@ fn main() {
     let local_hour = local_future.hour();
     let local_sched = format!("{local_sec} {local_min} {local_hour} * * *");
 
-    sched.add(Job::new(local_sched.parse().unwrap(), || {
+    sched.add(Job::new(local_sched.parse().expect("Valid schedule"), || {
         log(format!("I should get executed at {}!", local_future.to_rfc3339_opts(SecondsFormat::Secs, false)).as_str());
     }));
 
-    sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 10th second!");
     }));
 
-    sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("*/4 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 4 seconds!");
     }));
 

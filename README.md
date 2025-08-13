@@ -9,6 +9,16 @@ This is a fork which i try to maintain and maybe even improve where needed.
 
 ## Updates
 
+**2025-08-13 (v2.3.0):**
+ - Should be backwards compatible with previous versions
+ - Set MSRV to v1.83.0 which supports const `Option::<T>`
+ - Updated dependencies
+ - Fixed all tests, they were all ignored before
+ - Fixed a possible panic
+ - Used `pedantic` clippy and fixed those items
+ - Added some extra lints and adjusted where needed
+ - Only include files needed in the crate package
+
 **2025-04-13 (v2.2.0):**
  - Should be backwards compatible with previous versions
  - Set MSRV to v1.65.0 to match the lowest dependency

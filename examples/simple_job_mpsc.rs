@@ -7,11 +7,11 @@ fn main() {
 
     let mut sched = JobScheduler::new();
 
-    sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 10th second!");
     }));
 
-    sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+    sched.add(Job::new("*/4 * * * * *".parse().expect("Valid schedule"), || {
         log("I get executed every 4 seconds!");
     }));
 
@@ -33,12 +33,12 @@ fn main() {
         .expect("Error spawning channel-receiver thread");
 
     // Create a job which sends a message via the channel
-    sched.add(Job::new("0/5 * * * * *".parse().unwrap(), {
+    sched.add(Job::new("0/5 * * * * *".parse().expect("Valid schedule"), {
         move || {
             tx.send(String::from(
                 "I get executed every 5th second and send an mpsc!",
             ))
-            .unwrap();
+            .unwrap_or_else(|e| eprintln!("Failed to send message: {e:?}"));
         }
     }));
 
