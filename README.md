@@ -68,8 +68,16 @@ Be sure to add the job_scheduler_ng crate to your `Cargo.toml`:
 job_scheduler_ng = "*"
 ```
 
-Creating a schedule for a job is done using the `FromStr` impl for the
-`Schedule` type of the [cron](https://github.com/zslayton/cron) library.
+Creating a Cron for a job is done using the `FromStr` impl for the
+`CronSchedule` type.  
+By default, the `Schedule` struct from the [cron](https://github.com/zslayton/cron) library is used,
+but the `Cron` struct from [croner](https://github.com/Hexagon/croner-rust) is also supported as an alternative.
+
+To use croner just change your `Config.toml` to the following:
+```toml
+[dependencies]
+job_scheduler_ng = { version = "*", default-features = false, features = ["croner"] }
+```
 
 The scheduling format is as follows:
 
@@ -108,7 +116,7 @@ fn main() {
     loop {
         sched.tick();
 
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(1_000));
     }
 }
 ```
