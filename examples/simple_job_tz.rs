@@ -1,6 +1,6 @@
-use chrono::{Local, Timelike, SecondsFormat};
+use chrono::{Local, SecondsFormat, Timelike};
 use core::time::Duration;
-use job_scheduler_ng::{Job, JobScheduler};
+use job_scheduler_ng::{Job, JobScheduler, MIN_DURATION};
 use std::time::Instant;
 
 fn main() {
@@ -17,7 +17,11 @@ fn main() {
     let local_sched = format!("{local_sec} {local_min} {local_hour} * * *");
 
     sched.add(Job::new(local_sched.parse().expect("Valid schedule"), || {
-        log(format!("I should get executed at {}!", local_future.to_rfc3339_opts(SecondsFormat::Secs, false)).as_str());
+        log(format!(
+            "I should get executed at {}!",
+            local_future.to_rfc3339_opts(SecondsFormat::Secs, false)
+        )
+        .as_str());
     }));
 
     sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
@@ -34,7 +38,7 @@ fn main() {
     loop {
         sched.tick();
 
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(MIN_DURATION));
 
         // Check if we have waited long enough
         if start.elapsed().as_secs() >= WAIT_SECONDS {
@@ -46,9 +50,5 @@ fn main() {
 }
 
 fn log(msg: &str) {
-    println!(
-        "{:?} - {:?} - {msg}",
-        Local::now(),
-        std::thread::current().id()
-    );
+    println!("{:?} - {:?} - {msg}", Local::now(), std::thread::current().id());
 }

@@ -1,0 +1,5 @@
+/.github @BlackDex
+/.github/** @BlackDex
+/.github/CODEOWNERS @BlackDex
+/.github/workflows/** @BlackDex
+/.pre-commit-config.yaml @BlackDex

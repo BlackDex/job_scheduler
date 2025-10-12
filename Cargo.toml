@@ -1,6 +1,6 @@
 [package]
 name = "job_scheduler_ng"
-version = "2.3.0"
+version = "2.4.0"
 authors = ["Mathijs van Veluw <black.dex@gmail.com>"]
 description = "A simple cron-like job scheduling library for Rust (Updated since 2022)."
 documentation = "https://docs.rs/job_scheduler_ng/"

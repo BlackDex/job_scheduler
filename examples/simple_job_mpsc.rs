@@ -1,5 +1,5 @@
 use core::time::Duration;
-use job_scheduler_ng::{Job, JobScheduler};
+use job_scheduler_ng::{Job, JobScheduler, MIN_DURATION};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 fn main() {
@@ -27,7 +27,7 @@ fn main() {
                 if let Ok(msg) = rx.recv() {
                     log(&format!("rx: {msg}"));
                 }
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::sleep(Duration::from_millis(MIN_DURATION));
             }
         })
         .expect("Error spawning channel-receiver thread");
@@ -35,10 +35,8 @@ fn main() {
     // Create a job which sends a message via the channel
     sched.add(Job::new("0/5 * * * * *".parse().expect("Valid schedule"), {
         move || {
-            tx.send(String::from(
-                "I get executed every 5th second and send an mpsc!",
-            ))
-            .unwrap_or_else(|e| eprintln!("Failed to send message: {e:?}"));
+            tx.send(String::from("I get executed every 5th second and send an mpsc!"))
+                .unwrap_or_else(|e| eprintln!("Failed to send message: {e:?}"));
         }
     }));
 
@@ -48,7 +46,7 @@ fn main() {
             log("Starting job scheduler loop within thread");
             loop {
                 sched.tick();
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::sleep(Duration::from_millis(MIN_DURATION));
             }
         })
         .expect("Error spawning job-scheduler thread");
@@ -60,9 +58,5 @@ fn main() {
 }
 
 fn log(msg: &str) {
-    println!(
-        "{:?} - {:?} - {msg}",
-        chrono::Utc::now(),
-        std::thread::current().id()
-    );
+    println!("{:?} - {:?} - {msg}", chrono::Utc::now(), std::thread::current().id());
 }

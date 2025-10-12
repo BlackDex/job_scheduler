@@ -37,7 +37,7 @@
 //! A simple usage example:
 //!
 //! ```no_run
-//! use job_scheduler_ng::{JobScheduler, Job};
+//! use job_scheduler_ng::{JobScheduler, Job, MIN_DURATION};
 //! use core::time::Duration;
 //!
 //! let mut sched = JobScheduler::new();
@@ -52,7 +52,7 @@
 //!
 //! loop {
 //!     sched.tick();
-//!     std::thread::sleep(Duration::from_millis(500));
+//!     std::thread::sleep(Duration::from_millis(MIN_DURATION));
 //! }
 //! ```
 //!
@@ -61,7 +61,7 @@
 //!
 //! ```no_run
 //! use chrono::Local;
-//! use job_scheduler_ng::{JobScheduler, Job};
+//! use job_scheduler_ng::{JobScheduler, Job, MIN_DURATION};
 //! use core::time::Duration;
 //!
 //! let mut sched = JobScheduler::new();
@@ -74,14 +74,12 @@
 //!
 //! loop {
 //!     sched.tick();
-//!     std::thread::sleep(Duration::from_millis(500));
+//!     std::thread::sleep(Duration::from_millis(MIN_DURATION));
 //! }
 //! ```
 
 #[cfg(all(feature = "cron", feature = "croner"))]
-compile_error!(
-    "feature \"cron\" and feature \"croner\" cannot be enabled at the same time"
-);
+compile_error!("feature \"cron\" and feature \"croner\" cannot be enabled at the same time");
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 pub use uuid::Uuid;
@@ -91,11 +89,15 @@ pub use uuid::Uuid;
 pub use croner::Cron;
 #[cfg(feature = "croner")]
 type CronSchedule = Cron;
+#[cfg(feature = "croner")]
+pub const MIN_DURATION: u64 = 1_000;
 
 #[cfg(feature = "cron")]
 pub use cron::Schedule;
 #[cfg(feature = "cron")]
 type CronSchedule = Schedule;
+#[cfg(feature = "cron")]
+pub const MIN_DURATION: u64 = 500;
 
 /// A schedulable `Job`.
 pub struct Job<'a> {
@@ -304,16 +306,16 @@ impl<'a> JobScheduler<'a> {
     }
 
     /// The `tick` method increments time for the `JobScheduler` and executes
-    /// any pending jobs. It is recommended to sleep for at least 500
+    /// any pending jobs. It is recommended to sleep for at least `500` (and `1_000` for croner)
     /// milliseconds between invocations of this method.
     ///
     /// ```no_run
-    /// use job_scheduler_ng::JobScheduler;
+    /// use job_scheduler_ng::{JobScheduler, MIN_DURATION};
     /// use core::time::Duration;
     /// let mut sched = JobScheduler::new();
     /// loop {
     ///     sched.tick();
-    ///     std::thread::sleep(Duration::from_millis(500));
+    ///     std::thread::sleep(Duration::from_millis(MIN_DURATION));
     /// }
     /// ```
     #[inline]
@@ -324,35 +326,25 @@ impl<'a> JobScheduler<'a> {
     }
 
     #[cfg(feature = "croner")]
-    fn time_till_next_job_impl(&self) -> core::time::Duration {
-        if self.jobs.is_empty() {
-            return core::time::Duration::from_millis(500);
-        }
-        let tz = self.tz;
-        let now = Utc::now().with_timezone(&tz);
-        let durations = self
-            .jobs
+    #[inline]
+    fn get_next_job_durations(
+        &'a self,
+        now: &'a DateTime<FixedOffset>,
+    ) -> impl Iterator<Item = Duration> + 'a {
+        self.jobs
             .iter()
-            .filter_map(|job| job.cron.iter_after(now).next().map(|event| event - now));
-
-        let duration = durations.min().unwrap_or(Duration::zero());
-        duration.to_std().unwrap_or(core::time::Duration::ZERO)
+            .filter_map(move |job| job.cron.iter_after(*now).next().map(|event| event - now))
     }
 
     #[cfg(feature = "cron")]
-    fn time_till_next_job_impl(&self) -> core::time::Duration {
-        if self.jobs.is_empty() {
-            return core::time::Duration::from_millis(500);
-        }
-        let tz = self.tz;
-        let now = Utc::now().with_timezone(&tz);
-        let durations = self
-            .jobs
+    #[inline]
+    fn get_next_job_durations(
+        &'a self,
+        now: &'a DateTime<FixedOffset>,
+    ) -> impl Iterator<Item = Duration> + 'a {
+        self.jobs
             .iter()
-            .filter_map(|job| job.cron.after(&now).next().map(|event| event - now));
-
-        let duration = durations.min().unwrap_or(Duration::zero());
-        duration.to_std().unwrap_or(core::time::Duration::ZERO)
+            .filter_map(move |job| job.cron.after(now).next().map(|event| event - now))
     }
 
     /// The `time_till_next_job` method returns the duration till the next job
@@ -370,6 +362,17 @@ impl<'a> JobScheduler<'a> {
     #[inline]
     #[must_use]
     pub fn time_till_next_job(&self) -> core::time::Duration {
-        self.time_till_next_job_impl()
+        if self.jobs.is_empty() {
+            return core::time::Duration::from_millis(MIN_DURATION);
+        }
+        let tz = self.tz;
+        let now = Utc::now().with_timezone(&tz);
+
+        let duration = self
+            .get_next_job_durations(&now)
+            .min()
+            .unwrap_or(Duration::zero());
+
+        duration.to_std().unwrap_or(core::time::Duration::ZERO)
     }
 }

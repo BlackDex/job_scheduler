@@ -1,5 +1,5 @@
 use core::time::Duration;
-use job_scheduler_ng::{Job, JobScheduler};
+use job_scheduler_ng::{Job, JobScheduler, MIN_DURATION};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[tokio::main]
@@ -21,7 +21,7 @@ fn init_scheduler() {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("Failed to create Tokio runtime: {e:?}");
-            return
+            return;
         }
     };
 
@@ -52,7 +52,7 @@ fn init_scheduler() {
             loop {
                 sched.tick();
                 runtime.block_on(async move {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    tokio::time::sleep(Duration::from_millis(MIN_DURATION)).await;
                 });
             }
         })
@@ -61,27 +61,19 @@ fn init_scheduler() {
 
 async fn test_job_every_five() {
     let hash = hash(&chrono::Utc::now().timestamp_millis());
-    log(&format!(
-        "I get executed every 5th second (begin - {hash})!"
-    ));
+    log(&format!("I get executed every 5th second (begin - {hash})!"));
     // Wait 7 seconds, this will demonstrate this call will be async and not blocking.
     tokio::time::sleep(Duration::from_secs(7)).await;
-    log(&format!(
-        "I get executed every 5th second (end   - {hash})!"
-    ));
+    log(&format!("I get executed every 5th second (end   - {hash})!"));
 }
 
 async fn test_job_every_eight() {
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(MIN_DURATION)).await;
     log("I get executed every 8 seconds!");
 }
 
 fn log(msg: &str) {
-    println!(
-        "{:?} - {:?} - {msg}",
-        chrono::Utc::now(),
-        std::thread::current().id()
-    );
+    println!("{:?} - {:?} - {msg}", chrono::Utc::now(), std::thread::current().id());
 }
 
 fn hash<T: Hash>(t: &T) -> u64 {
