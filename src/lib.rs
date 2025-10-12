@@ -78,13 +78,28 @@
 //! }
 //! ```
 
+#[cfg(all(feature = "cron", feature = "croner"))]
+compile_error!(
+    "feature \"cron\" and feature \"croner\" cannot be enabled at the same time"
+);
+
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-pub use cron::Schedule;
 pub use uuid::Uuid;
+
+// Feature-gated imports and type aliases
+#[cfg(feature = "croner")]
+pub use croner::Cron;
+#[cfg(feature = "croner")]
+type CronSchedule = Cron;
+
+#[cfg(feature = "cron")]
+pub use cron::Schedule;
+#[cfg(feature = "cron")]
+type CronSchedule = Schedule;
 
 /// A schedulable `Job`.
 pub struct Job<'a> {
-    schedule: Schedule,
+    cron: CronSchedule,
     run: Box<dyn FnMut() + Send + 'a>,
     last_tick: Option<DateTime<FixedOffset>>,
     limit_missed_runs: usize,
@@ -97,21 +112,23 @@ impl<'a> Job<'a> {
     /// Create a new job.
     ///
     /// ```rust
-    /// use cron::Schedule;
+    /// # #[cfg(feature = "croner")] {
+    /// use croner::Cron;
     /// use job_scheduler_ng::Job;
     /// // Run at second 0 of the 15th minute of the 6th, 8th, and 10th hour
     /// // of any day in March and June that is a Friday of the year 2025.
-    /// let s: Schedule = "0 15 6,8,10 * Mar,Jun Fri 2025".parse().unwrap();
+    /// let s: Cron = "0 15 6,8,10 * Mar,Jun Fri 2025".parse().unwrap();
     /// Job::new(s, || println!("I have a complex schedule...") );
+    /// # }
     /// ```
     #[inline]
     #[expect(clippy::missing_panics_doc, reason = "infallible")]
-    pub fn new<T>(schedule: Schedule, run: T) -> Self
+    pub fn new<T>(cron: CronSchedule, run: T) -> Self
     where
         T: FnMut() + Send + 'a,
     {
         Self {
-            schedule,
+            cron,
             run: Box::new(run),
             last_tick: None,
             limit_missed_runs: 1,
@@ -120,18 +137,43 @@ impl<'a> Job<'a> {
         }
     }
 
+    #[cfg(feature = "croner")]
     fn tick(&mut self) {
         let now = Utc::now().with_timezone(&self.tz);
         if let Some(last_tick) = self.last_tick {
             if self.limit_missed_runs > 0 {
-                for event in self.schedule.after(&last_tick).take(self.limit_missed_runs) {
+                for event in self.cron.iter_after(last_tick).take(self.limit_missed_runs) {
                     if event > now {
                         break;
                     }
                     (self.run)();
                 }
             } else {
-                for event in self.schedule.after(&last_tick) {
+                for event in self.cron.iter_after(last_tick) {
+                    if event > now {
+                        break;
+                    }
+                    (self.run)();
+                }
+            }
+        }
+
+        self.last_tick = Some(now);
+    }
+
+    #[cfg(feature = "cron")]
+    fn tick(&mut self) {
+        let now = Utc::now().with_timezone(&self.tz);
+        if let Some(last_tick) = self.last_tick {
+            if self.limit_missed_runs > 0 {
+                for event in self.cron.after(&last_tick).take(self.limit_missed_runs) {
+                    if event > now {
+                        break;
+                    }
+                    (self.run)();
+                }
+            } else {
+                for event in self.cron.after(&last_tick) {
                     if event > now {
                         break;
                     }
@@ -281,6 +323,38 @@ impl<'a> JobScheduler<'a> {
         }
     }
 
+    #[cfg(feature = "croner")]
+    fn time_till_next_job_impl(&self) -> core::time::Duration {
+        if self.jobs.is_empty() {
+            return core::time::Duration::from_millis(500);
+        }
+        let tz = self.tz;
+        let now = Utc::now().with_timezone(&tz);
+        let durations = self
+            .jobs
+            .iter()
+            .filter_map(|job| job.cron.iter_after(now).next().map(|event| event - now));
+
+        let duration = durations.min().unwrap_or(Duration::zero());
+        duration.to_std().unwrap_or(core::time::Duration::ZERO)
+    }
+
+    #[cfg(feature = "cron")]
+    fn time_till_next_job_impl(&self) -> core::time::Duration {
+        if self.jobs.is_empty() {
+            return core::time::Duration::from_millis(500);
+        }
+        let tz = self.tz;
+        let now = Utc::now().with_timezone(&tz);
+        let durations = self
+            .jobs
+            .iter()
+            .filter_map(|job| job.cron.after(&now).next().map(|event| event - now));
+
+        let duration = durations.min().unwrap_or(Duration::zero());
+        duration.to_std().unwrap_or(core::time::Duration::ZERO)
+    }
+
     /// The `time_till_next_job` method returns the duration till the next job
     /// is supposed to run. This can be used to sleep until then without waking
     /// up at a fixed interval.AsMut
@@ -296,17 +370,6 @@ impl<'a> JobScheduler<'a> {
     #[inline]
     #[must_use]
     pub fn time_till_next_job(&self) -> core::time::Duration {
-        if self.jobs.is_empty() {
-            // Take a guess if there are no jobs.
-            return core::time::Duration::from_millis(500);
-        }
-        let tz = self.tz;
-        let now = Utc::now().with_timezone(&tz);
-        let durations = self.jobs.iter().filter_map(|job| {
-            job.schedule.upcoming(tz).next().map(|event| event - now)
-        });
-
-        let duration = durations.min().unwrap_or(Duration::zero());
-        duration.to_std().unwrap_or(core::time::Duration::ZERO)
+        self.time_till_next_job_impl()
     }
 }

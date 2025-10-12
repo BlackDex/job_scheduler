@@ -20,8 +20,14 @@ include = [
     "src/**/*.rs"
 ]
 
+[features]
+default = ["cron"]
+croner = ["dep:croner"]
+cron = ["dep:cron"]
+
 [dependencies]
-cron = "0.15.0"
+croner = { version = "3.0.0", optional = true }
+cron = { version = "0.15.0", optional = true }
 chrono = { version = "0.4.40", default-features = false, features = ["clock"] }
 uuid = { version = "1.14.0", default-features = false, features = ["v4"] }
 
