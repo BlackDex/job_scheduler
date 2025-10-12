@@ -1,0 +1,233 @@
+name: CI Checks
+permissions: {}
+
+on:
+  push:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "examples/**"
+      - "src/**"
+      - "Cargo.*"
+      - "rustfmt.toml"
+
+  pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "examples/**"
+      - "src/**"
+      - "Cargo.*"
+      - "rustfmt.toml"
+
+jobs:
+  check_and_test:
+    name: Check and Test ${{ matrix.channel }} - ${{ matrix.features }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    # Make warnings errors, this is to prevent warnings slipping through.
+    # This is done globally to prevent rebuilds when the RUSTFLAGS env variable changes.
+    env:
+      RUSTFLAGS: "-Dwarnings"
+    strategy:
+      fail-fast: false
+      matrix:
+        channel:
+          - "1.83.0"
+          - "stable"
+          - "nightly"
+        features:
+          - "cron"
+          - "croner"
+
+    steps:
+      # Checkout the repo
+      - name: "Checkout"
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          persist-credentials: false
+      # End Checkout the repo
+
+
+      # Install the clippy and rustfmt components also
+      - name: "Install rust-toolchain"
+        uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921 # master @ Sep 16, 2025, 8:37 PM GMT+2
+        with:
+          toolchain: ${{ matrix.channel }}
+          components: clippy, rustfmt
+      # End install components
+
+
+      # Show environment
+      - name: "Show environment"
+        run: |
+          rustc -vV
+          cargo -vV
+      # End Show environment
+
+
+      # Enable Rust Caching
+      - name: Rust Caching
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      # End Enable Rust Caching
+
+
+      # Run cargo tests
+      - name: "Test features: ${{ matrix.features }}"
+        id: test
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo test --no-default-features --features "${FEATURES}"
+      # End Run cargo tests
+
+
+      # Run cargo clippy, and fail on warnings
+      - name: "Test features: ${{ matrix.features }}"
+        id: clippy
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo clippy --no-default-features --features "${FEATURES}"
+      # End Run cargo clippy
+
+
+      # Run cargo fmt (Only run on stable version)
+      - name: "Check formatting"
+        id: formatting
+        if: ${{ !cancelled() && matrix.channel == 'stable' }}
+        run: |
+          cargo fmt --all -- --check
+      # End Run cargo fmt
+
+
+      # Check for any previous failures, if there are stop, else continue.
+      # This is useful so all test/clippy/fmt actions are done, and they can all be addressed
+      - name: "Some checks failed - ${{ matrix.channel }} - ${{ matrix.features }}"
+        if: ${{ failure() }}
+        env:
+          TEST: ${{ steps.test.outcome }}
+          CLIPPY: ${{ steps.clippy.outcome }}
+          FMT: ${{ steps.formatting.outcome }}
+        run: |
+          echo "### :x: Checks Failed!" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|Job|Status|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|---|------|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|test|${TEST}|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|clippy|${CLIPPY}|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|fmt|${FMT}|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Please check the failed jobs and fix where needed." >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          exit 1
+
+      # Check for any previous failures, if there are stop, else continue.
+      # This is useful so all test/clippy/fmt actions are done, and they can all be addressed
+      - name: "All checks passed - ${{ matrix.channel }} - ${{ matrix.features }}"
+        if: ${{ success() }}
+        run: |
+          echo "### :tada: Checks Passed!" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+
+## ############
+## Run examples
+  run_examples:
+    name: Run examples ${{ matrix.channel }} - ${{ matrix.features }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    # Make warnings errors, this is to prevent warnings slipping through.
+    # This is done globally to prevent rebuilds when the RUSTFLAGS env variable changes.
+    env:
+      RUSTFLAGS: "-Dwarnings"
+    strategy:
+      fail-fast: false
+      matrix:
+        channel:
+          - "stable"
+        features:
+          - "cron"
+          - "croner"
+
+    steps:
+      # Checkout the repo
+      - name: "Checkout"
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          persist-credentials: false
+      # End Checkout the repo
+
+
+      # Do not install any components
+      - name: "Install rust-toolchain"
+        uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921 # master @ Sep 16, 2025, 8:37 PM GMT+2
+        with:
+          toolchain: ${{ matrix.channel }}
+          components: ""
+      # End install components
+
+
+      # Show environment
+      - name: "Show environment"
+        run: |
+          rustc -vV
+          cargo -vV
+      # End Show environment
+
+
+      # Enable Rust Caching
+      - name: Rust Caching
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      # End Enable Rust Caching
+
+
+      # Run example `simple_job_mpsc`
+      - name: "Run simple_job_mpsc: ${{ matrix.features }}"
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example simple_job_mpsc
+      # End Run example
+
+
+      # Run example `simple_job_thread`
+      - name: "Run simple_job_thread: ${{ matrix.features }}"
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example simple_job_thread
+      # End Run example
+
+
+      # Run example `simple_job_tokio`
+      - name: "Run simple_job_tokio: ${{ matrix.features }}"
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example simple_job_tokio
+      # End Run example
+
+
+      # Run example `simple_job_tz`
+      - name: "Run simple_job_tz: ${{ matrix.features }}"
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example simple_job_tz
+      # End Run example
+
+
+      # Run example `simple_job`
+      - name: "Run simple_job: ${{ matrix.features }}"
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example simple_job
+      # End Run example

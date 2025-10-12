@@ -32,9 +32,5 @@ fn main() {
 }
 
 fn log(msg: &str) {
-    println!(
-        "{:?} - {:?} - {msg}",
-        chrono::Utc::now(),
-        std::thread::current().id()
-    );
+    println!("{:?} - {:?} - {msg}", chrono::Utc::now(), std::thread::current().id());
 }

@@ -1,0 +1,66 @@
+---
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    hooks:
+    - id: check-yaml
+    - id: check-json
+    - id: check-toml
+    - id: mixed-line-ending
+      args: ["--fix=no"]
+    - id: end-of-file-fixer
+    - id: check-case-conflict
+    - id: check-merge-conflict
+    - id: detect-private-key
+    - id: check-symlinks
+    - id: forbid-submodules
+-   repo: local
+    hooks:
+    - id: fmt
+      name: fmt
+      description: Format files with cargo fmt.
+      entry: cargo fmt
+      language: system
+      types: [rust]
+      args: ["--", "--check"]
+    - id: cargo-test-cron
+      name: cargo test cron
+      description: Test the package for errors.
+      entry: cargo test
+      language: system
+      args: ["--no-default-features", "--features", "cron", "--"]
+      types_or: [rust, file]
+      files: (Cargo.toml|rustfmt.toml|.*\.rs$)
+      pass_filenames: false
+    - id: cargo-test-croner
+      name: cargo test croner
+      description: Test the package for errors.
+      entry: cargo test
+      language: system
+      args: ["--no-default-features", "--features", "croner", "--"]
+      types_or: [rust, file]
+      files: (Cargo.toml|rustfmt.toml|.*\.rs$)
+      pass_filenames: false
+    - id: cargo-clippy-cron
+      name: cargo clippy cron
+      description: Lint Rust sources
+      entry: cargo clippy
+      language: system
+      args: ["--no-default-features", "--features", "cron", "--", "-D", "warnings"]
+      types_or: [rust, file]
+      files: (Cargo.toml|rustfmt.toml|.*\.rs$)
+      pass_filenames: false
+    - id: cargo-clippy-croner
+      name: cargo clippy croner
+      description: Lint Rust sources
+      entry: cargo clippy
+      language: system
+      args: ["--no-default-features", "--features", "croner", "--", "-D", "warnings"]
+      types_or: [rust, file]
+      files: (Cargo.toml|rustfmt.toml|.*\.rs$)
+      pass_filenames: false
+# When this version is updated, do not forget to update this in `.github/workflows/typos.yaml` too
+- repo: https://github.com/crate-ci/typos
+  rev: 80c8a4945eec0f6d464eaf9e65ed98ef085283d1 # v1.38.1
+  hooks:
+    - id: typos
