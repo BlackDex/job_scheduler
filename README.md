@@ -9,6 +9,11 @@ This is a fork which i try to maintain and maybe even improve where needed.
 
 ## Updates
 
+**2025-08-13 (v2.4.0):**
+ - Should be backwards compatible with previous versions
+ - Added croner as an alternative cron parser (thanks to @DenuxPlays)
+ - Added pre-commit and GitHub workflow checks
+
 **2025-08-13 (v2.3.0):**
  - Should be backwards compatible with previous versions
  - Set MSRV to v1.83.0 which supports const `Option::<T>`
@@ -69,7 +74,7 @@ job_scheduler_ng = "*"
 ```
 
 Creating a Cron for a job is done using the `FromStr` impl for the
-`CronSchedule` type.  
+`CronSchedule` type.
 By default, the `Schedule` struct from the [cron](https://github.com/zslayton/cron) library is used,
 but the `Cron` struct from [croner](https://github.com/Hexagon/croner-rust) is also supported as an alternative.
 
