@@ -61,6 +61,6 @@ repos:
       pass_filenames: false
 # When this version is updated, do not forget to update this in `.github/workflows/typos.yaml` too
 - repo: https://github.com/crate-ci/typos
-  rev: 80c8a4945eec0f6d464eaf9e65ed98ef085283d1 # v1.38.1
+  rev: bee27e3a4fd1ea2111cf90ab89cd076c870fce14 # v1.48.0
   hooks:
     - id: typos

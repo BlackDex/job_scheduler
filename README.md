@@ -9,6 +9,13 @@ This is a fork which i try to maintain and maybe even improve where needed.
 
 ## Updates
 
+**2026-07-26 (v2.5.0):**
+ - Set MSRV to v1.87.0 which supports `cast_signed()`
+ - Some refactoring to keep the different cron features more DRY.
+ - Fixed a possible issue when all jobs are in the past. This could cause a CPU loop.
+ - Prevent a single task from starving others if there is a large list of ticks in the backlog.
+   Large backlogs are run in batches of `1_000` jobs per tick.
+
 **2025-08-13 (v2.4.0):**
  - Should be backwards compatible with previous versions
  - Added croner as an alternative cron parser (thanks to @DenuxPlays)
@@ -70,18 +77,18 @@ Be sure to add the job_scheduler_ng crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-job_scheduler_ng = "*"
+job_scheduler_ng = "2"
 ```
 
 Creating a Cron for a job is done using the `FromStr` impl for the
-`CronSchedule` type.
+`Schedule` or `Cron` structs depending on which cron parser feature you use.
 By default, the `Schedule` struct from the [cron](https://github.com/zslayton/cron) library is used,
 but the `Cron` struct from [croner](https://github.com/Hexagon/croner-rust) is also supported as an alternative.
 
-To use croner just change your `Config.toml` to the following:
+To use croner just change your `Cargo.toml` to the following:
 ```toml
 [dependencies]
-job_scheduler_ng = { version = "*", default-features = false, features = ["croner"] }
+job_scheduler_ng = { version = "2", default-features = false, features = ["croner"] }
 ```
 
 The scheduling format is as follows:
@@ -108,7 +115,7 @@ A simple usage example:
 
 ```rust
 extern crate job_scheduler_ng;
-use job_scheduler_ng::{JobScheduler, Job};
+use job_scheduler_ng::{JobScheduler, Job, MIN_DURATION};
 use std::time::Duration;
 
 fn main() {
@@ -121,17 +128,17 @@ fn main() {
     loop {
         sched.tick();
 
-        std::thread::sleep(Duration::from_millis(1_000));
+        std::thread::sleep(Duration::from_millis(MIN_DURATION));
     }
 }
 ```
 
-Setting a custom timezone other then the default UTC.
+Setting a custom timezone other than the default UTC.
 Any `Tz::Offset` provided by chrono will work.
 
 ```rust
 use chrono::Local;
-use job_scheduler_ng::{JobScheduler, Job};
+use job_scheduler_ng::{JobScheduler, Job, MIN_DURATION};
 use core::time::Duration;
 
 fn main() {
@@ -145,7 +152,7 @@ fn main() {
 
     loop {
         sched.tick();
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(MIN_DURATION));
     }
 }
 ```
@@ -153,6 +160,7 @@ fn main() {
 ## Similar Libraries
 
 * [cron](https://github.com/zslayton/cron) the cron expression parser we use.
+* [croner](https://github.com/Hexagon/croner-rust) the other cron expression parser you can use.
 * [schedule-rs](https://github.com/mehcode/schedule-rs) is a similar rust library that implements it's own cron expression parser.
 
 ## License

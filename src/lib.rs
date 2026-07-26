@@ -8,11 +8,15 @@
 //!
 //! ```toml
 //! [dependencies]
-//! job_scheduler_ng = "*"
+//! job_scheduler_ng = "2"
 //! ```
 //!
 //! Creating a schedule for a job is done using the `FromStr` impl for the
 //! `Schedule` type of the [cron](https://github.com/zslayton/cron) library.
+//! Or
+//! `Cron` type of the [croner](https://github.com/hexagon/croner-rust) library.
+//!
+//! See the documentation of the feature you use on which scheduling format is supported.
 //!
 //! The scheduling format is as follows:
 //!
@@ -30,9 +34,22 @@
 //! Ranges can be specified with a dash. A schedule of `0 0 * 5-10 * *`
 //! would execute once per hour but only on day 5 through 10 of the month.
 //!
-//! Day of the week can be specified as an abbreviation or the full name.
-//! A schedule of `0 0 6 * * Sun,Sat` would execute at 6am on Sunday and
-//! Saturday.
+//!
+//! ## Features
+//!
+//! - `cron` (default): Uses the `Schedule` struct from the [cron](https://github.com/zslayton/cron) library.
+//! - `croner`: Uses the `Cron` struct from the [croner](https://github.com/hexagon/croner-rust) library.
+//!
+//! Only one of these features can be enabled at the same time.
+//! To use croner, disable the default features:
+//!
+//! ```toml
+//! [dependencies]
+//! job_scheduler_ng = { version = "2", default-features = false, features = ["croner"] }
+//! ```
+//!
+//!
+//! ## Example
 //!
 //! A simple usage example:
 //!
@@ -42,11 +59,11 @@
 //!
 //! let mut sched = JobScheduler::new();
 //!
-//! sched.add(Job::new("0/10 * * * * *".parse().unwrap(), || {
+//! sched.add(Job::new("0/10 * * * * *".parse().expect("Valid schedule"), || {
 //!     println!("I get executed every 10th second!");
 //! }));
 //!
-//! sched.add(Job::new("*/4 * * * * *".parse().unwrap(), || {
+//! sched.add(Job::new("*/4 * * * * *".parse().expect("Valid schedule"), || {
 //!     println!("I get executed every 4 seconds!");
 //! }));
 //!
@@ -56,7 +73,7 @@
 //! }
 //! ```
 //!
-//! Setting a custom timezone other then the default UTC
+//! Setting a custom timezone other than the default UTC
 //! Any `Tz::Offset` provided by chrono will work.
 //!
 //! ```no_run
@@ -68,7 +85,7 @@
 //! let local_tz = Local::now();
 //! sched.set_timezone(*local_tz.offset());
 //!
-//! sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
+//! sched.add(Job::new("0 5 13 * * *".parse().expect("Valid schedule"), || {
 //!     println!("I get executed every day 13:05 local time!");
 //! }));
 //!
@@ -77,6 +94,21 @@
 //!     std::thread::sleep(Duration::from_millis(MIN_DURATION));
 //! }
 //! ```
+//!
+//!
+//! ## How jobs are executed
+//!
+//! Jobs are executed one after the other, on the thread which calls `tick()`, in the order they were added.
+//! A long running job delays all jobs after it. Spawn a thread or use a channel if this is an issue,
+//! see the `simple_job_thread` and `simple_job_mpsc` examples.
+//!
+//! The first call to `tick()` only stores the current time and does not run any jobs.
+//! Every scheduled run is executed at most once. If a job panics, that run is not retried.
+//! If the system clock is set backwards, jobs could run twice once the clock catches up again.
+//!
+
+#[cfg(not(any(feature = "cron", feature = "croner")))]
+compile_error!("either feature \"cron\" or feature \"croner\" must be enabled");
 
 #[cfg(all(feature = "cron", feature = "croner"))]
 compile_error!("feature \"cron\" and feature \"croner\" cannot be enabled at the same time");
@@ -90,6 +122,8 @@ pub use croner::Cron;
 #[cfg(feature = "croner")]
 type CronSchedule = Cron;
 #[cfg(feature = "croner")]
+/// Recommended minimum sleep between `tick()` calls, in milliseconds.
+/// `500` for the `cron` backend, `1_000` for `croner`.
 pub const MIN_DURATION: u64 = 1_000;
 
 #[cfg(feature = "cron")]
@@ -97,7 +131,29 @@ pub use cron::Schedule;
 #[cfg(feature = "cron")]
 type CronSchedule = Schedule;
 #[cfg(feature = "cron")]
+/// Recommended minimum sleep between `tick()` calls, in milliseconds.
+/// `500` for the `cron` backend, `1_000` for `croner`.
 pub const MIN_DURATION: u64 = 500;
+
+const MAX_MISSED_PER_TICK: usize = 1_000;
+
+#[cfg(feature = "croner")]
+#[inline]
+fn item_after(
+    cron: &CronSchedule,
+    after: DateTime<FixedOffset>,
+) -> impl Iterator<Item = DateTime<FixedOffset>> + '_ {
+    cron.iter_after(after)
+}
+
+#[cfg(feature = "cron")]
+#[inline]
+fn item_after(
+    cron: &CronSchedule,
+    after: DateTime<FixedOffset>,
+) -> impl Iterator<Item = DateTime<FixedOffset>> + '_ {
+    cron.after(&after)
+}
 
 /// A schedulable `Job`.
 pub struct Job<'a> {
@@ -113,13 +169,25 @@ pub struct Job<'a> {
 impl<'a> Job<'a> {
     /// Create a new job.
     ///
+    /// Either with `cron`
     /// ```rust
-    /// # #[cfg(feature = "croner")] {
-    /// use croner::Cron;
-    /// use job_scheduler_ng::Job;
+    /// # #[cfg(feature = "cron")] {
+    /// use job_scheduler_ng::{Schedule, Job};
     /// // Run at second 0 of the 15th minute of the 6th, 8th, and 10th hour
     /// // of any day in March and June that is a Friday of the year 2025.
-    /// let s: Cron = "0 15 6,8,10 * Mar,Jun Fri 2025".parse().unwrap();
+    /// let s: Schedule = "0 15 6,8,10 * Mar,Jun Fri 2025".parse().expect("Valid schedule");
+    /// Job::new(s, || println!("I have a complex schedule...") );
+    /// # }
+    /// ```
+    ///
+    /// Or `croner`
+    /// ```rust
+    /// # #[cfg(feature = "croner")] {
+    /// use job_scheduler_ng::{Cron, Job};
+    /// // Run at second 0 of the 20th minute of the 5th, 7th, and 9th hour,
+    /// // only on the Last day of the month (Which is what the `L` does)
+    /// // of any day in March and June that is a Friday of the year 2025.
+    /// let s: Cron = "0 20 5,7,9 L Mar,Jun Fri 2025".parse().expect("Valid schedule");
     /// Job::new(s, || println!("I have a complex schedule...") );
     /// # }
     /// ```
@@ -139,59 +207,48 @@ impl<'a> Job<'a> {
         }
     }
 
-    #[cfg(feature = "croner")]
     fn tick(&mut self) {
         let now = Utc::now().with_timezone(&self.tz);
-        if let Some(last_tick) = self.last_tick {
-            if self.limit_missed_runs > 0 {
-                for event in self.cron.iter_after(last_tick).take(self.limit_missed_runs) {
-                    if event > now {
-                        break;
-                    }
-                    (self.run)();
-                }
-            } else {
-                for event in self.cron.iter_after(last_tick) {
-                    if event > now {
-                        break;
-                    }
-                    (self.run)();
-                }
+        let Some(last_tick) = self.last_tick else {
+            self.last_tick = Some(now);
+            return;
+        };
+
+        let limit = if self.limit_missed_runs == 0 {
+            MAX_MISSED_PER_TICK
+        } else {
+            self.limit_missed_runs.min(MAX_MISSED_PER_TICK)
+        };
+
+        let mut executed = 0;
+        for event in item_after(&self.cron, last_tick).take(limit) {
+            if event > now {
+                break;
             }
+            // Set the last_tick to this event before running it.
+            // If the callback panics the last_tick would be lost, and would re-fire/replay
+            self.last_tick = Some(event);
+            (self.run)();
+            executed += 1;
         }
 
-        self.last_tick = Some(now);
-    }
-
-    #[cfg(feature = "cron")]
-    fn tick(&mut self) {
-        let now = Utc::now().with_timezone(&self.tz);
-        if let Some(last_tick) = self.last_tick {
-            if self.limit_missed_runs > 0 {
-                for event in self.cron.after(&last_tick).take(self.limit_missed_runs) {
-                    if event > now {
-                        break;
-                    }
-                    (self.run)();
-                }
-            } else {
-                for event in self.cron.after(&last_tick) {
-                    if event > now {
-                        break;
-                    }
-                    (self.run)();
-                }
-            }
+        // Move last_tick to now.
+        // One exception: in unlimited mode, hitting MAX_MISSED_PER_TICK means there may be missed runs left.
+        // Keep last_tick at the last executed event so the next tick continues where this one stopped.
+        if self.limit_missed_runs != 0 || executed < limit {
+            self.last_tick = Some(now);
         }
-
-        self.last_tick = Some(now);
     }
 
-    /// Set the limit for missed jobs in the case of delayed runs. Setting to 0 means unlimited.
+    /// Set the limit for missed runs in the case of delayed ticks. Setting to 0 means unlimited.
+    ///
+    /// At most `1_000` missed runs are executed per `tick()` call, so one job cannot
+    /// starve the others. With a limit of 0 the remainder carries over to the next
+    /// tick until caught up; with an explicit limit, runs beyond the limit are skipped.
     ///
     /// ```rust
     /// use job_scheduler_ng::Job;
-    /// let mut job = Job::new("0/1 * * * * *".parse().unwrap(), || {
+    /// let mut job = Job::new("0/1 * * * * *".parse().expect("Valid schedule"), || {
     ///     println!("I get executed every 1 seconds!");
     /// });
     /// job.limit_missed_runs(99);
@@ -203,10 +260,13 @@ impl<'a> Job<'a> {
 
     /// Set last tick to force re-running of missed runs.
     ///
+    /// Be careful setting this far into the past in combination with `limit_missed_runs(0)`,
+    /// as every missed run since then will be executed (in batches of `1_000` per tick).
+    ///
     /// ```rust
     /// use job_scheduler_ng::Job;
     /// use chrono::{Local, Utc};
-    /// let mut job = Job::new("0/1 * * * * *".parse().unwrap(), || {
+    /// let mut job = Job::new("0/1 * * * * *".parse().expect("Valid schedule"), || {
     ///     println!("I get executed every 1 seconds!");
     /// });
     /// let local_tz = Local::now();
@@ -242,7 +302,7 @@ impl<'a> JobScheduler<'a> {
         }
     }
 
-    /// Set a custom timezone other then the default UTC.
+    /// Set a custom timezone other than the default UTC.
     ///
     /// ```rust
     /// use job_scheduler_ng::{JobScheduler, Job};
@@ -250,7 +310,7 @@ impl<'a> JobScheduler<'a> {
     /// let mut sched = JobScheduler::new();
     /// let local_tz = Local::now();
     /// sched.set_timezone(*local_tz.offset());
-    /// sched.add(Job::new("0 5 13 * * *".parse().unwrap(), || {
+    /// sched.add(Job::new("0 5 13 * * *".parse().expect("Valid schedule"), || {
     ///     println!("I get executed every day 13:05 local time!");
     /// }));
     /// ```
@@ -259,11 +319,12 @@ impl<'a> JobScheduler<'a> {
     }
 
     /// Add a job to the `JobScheduler`
+    /// Returns a UUID which can be used with `remove()` to remove this specific job.
     ///
     /// ```rust
     /// use job_scheduler_ng::{JobScheduler, Job};
     /// let mut sched = JobScheduler::new();
-    /// sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
+    /// sched.add(Job::new("1/10 * * * * *".parse().expect("Valid schedule"), || {
     ///     println!("I get executed every 10 seconds!");
     /// }));
     /// ```
@@ -278,12 +339,13 @@ impl<'a> JobScheduler<'a> {
         job_id
     }
 
-    /// Remove a job from the `JobScheduler`
+    /// Remove a job from the `JobScheduler` using the UUID returned by `add()`.
+    /// Will return a boolean true if the UUID is found and removed, false otherwise.
     ///
     /// ```rust
     /// use job_scheduler_ng::{JobScheduler, Job};
     /// let mut sched = JobScheduler::new();
-    /// let job_id = sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
+    /// let job_id = sched.add(Job::new("1/10 * * * * *".parse().expect("Valid schedule"), || {
     ///     println!("I get executed every 10 seconds!");
     /// }));
     /// sched.remove(job_id);
@@ -305,9 +367,8 @@ impl<'a> JobScheduler<'a> {
         found_index.is_some()
     }
 
-    /// The `tick` method increments time for the `JobScheduler` and executes
-    /// any pending jobs. It is recommended to sleep for at least `500` (and `1_000` for croner)
-    /// milliseconds between invocations of this method.
+    /// The `tick` method increments time for the `JobScheduler` and executes any pending jobs.
+    /// It is recommended to use `MIN_DURATION` for sleep as milliseconds between invocations of this method.
     ///
     /// ```no_run
     /// use job_scheduler_ng::{JobScheduler, MIN_DURATION};
@@ -325,7 +386,6 @@ impl<'a> JobScheduler<'a> {
         }
     }
 
-    #[cfg(feature = "croner")]
     #[inline]
     fn get_next_job_durations(
         &'a self,
@@ -333,23 +393,12 @@ impl<'a> JobScheduler<'a> {
     ) -> impl Iterator<Item = Duration> + 'a {
         self.jobs
             .iter()
-            .filter_map(move |job| job.cron.iter_after(*now).next().map(|event| event - now))
+            .filter_map(move |job| item_after(&job.cron, *now).next().map(|event| event - now))
     }
 
-    #[cfg(feature = "cron")]
-    #[inline]
-    fn get_next_job_durations(
-        &'a self,
-        now: &'a DateTime<FixedOffset>,
-    ) -> impl Iterator<Item = Duration> + 'a {
-        self.jobs
-            .iter()
-            .filter_map(move |job| job.cron.after(now).next().map(|event| event - now))
-    }
-
-    /// The `time_till_next_job` method returns the duration till the next job
-    /// is supposed to run. This can be used to sleep until then without waking
-    /// up at a fixed interval.AsMut
+    /// The `time_till_next_job` method returns the duration till the next job is supposed to run.
+    /// This can be used to sleep until then without waking up at a fixed interval.
+    /// If no jobs are available, or all are in the past, it will fallback to `MIN_DURATION`
     ///
     /// ```no_run
     /// use job_scheduler_ng::JobScheduler;
@@ -371,8 +420,10 @@ impl<'a> JobScheduler<'a> {
         let duration = self
             .get_next_job_durations(&now)
             .min()
-            .unwrap_or(Duration::zero());
+            .unwrap_or_else(|| Duration::milliseconds(MIN_DURATION.cast_signed()));
 
-        duration.to_std().unwrap_or(core::time::Duration::ZERO)
+        duration
+            .to_std()
+            .unwrap_or(core::time::Duration::from_millis(MIN_DURATION))
     }
 }

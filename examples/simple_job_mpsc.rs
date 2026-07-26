@@ -1,6 +1,6 @@
 use core::time::Duration;
 use job_scheduler_ng::{Job, JobScheduler, MIN_DURATION};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 fn main() {
     const WAIT_SECONDS: u64 = 40;
