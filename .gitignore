@@ -1,4 +1,13 @@
-target/
-**/*.rs.bk
-Cargo.lock
-.vscode/
+*
+
+!.github/
+!.github/**
+!examples/
+!examples/**
+!src/
+!src/**
+!.gitignore
+!.pre-commit-config.yaml
+!*.toml
+!*.md
+!LICENSE*
