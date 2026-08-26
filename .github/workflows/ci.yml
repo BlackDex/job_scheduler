@@ -24,8 +24,8 @@ concurrency:
 
 jobs:
   check_and_test:
-    name: Check and Test ${{ matrix.channel }} - ${{ matrix.features }}
-    runs-on: ubuntu-24.04
+    name: Check and Test ${{ matrix.os }} - ${{ matrix.channel }} - ${{ matrix.features }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     # Make warnings errors, this is to prevent warnings slipping through.
     # This is done globally to prevent rebuilds when the RUSTFLAGS env variable changes.
@@ -34,6 +34,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os:
+          - "ubuntu-24.04"
+          - "windows-latest"
         channel:
           - "1.87.0"
           - "stable"
@@ -41,6 +44,13 @@ jobs:
         features:
           - "cron"
           - "croner"
+        include:
+          - os: "ubuntu-24.04"
+            channel: "stable"
+            features: "croner,timezones,tokio"
+          - os: "windows-latest"
+            channel: "stable"
+            features: "croner,timezones,tokio"
 
     steps:
       # Checkout the repo
@@ -89,7 +99,7 @@ jobs:
         env:
           FEATURES: ${{ matrix.features }}
         run: |
-          cargo test --no-default-features --features "${FEATURES}"
+          cargo test --all-targets --no-default-features --features "${FEATURES}"
       # End Run cargo tests
 
 
@@ -101,7 +111,7 @@ jobs:
         env:
           FEATURES: ${{ matrix.features }}
         run: |
-          cargo clippy --no-default-features --features "${FEATURES}"
+          cargo clippy --all-targets --no-default-features --features "${FEATURES}"
       # End Run cargo clippy
 
 
@@ -161,6 +171,7 @@ jobs:
         features:
           - "cron"
           - "croner"
+          - "croner,timezones,tokio"
 
     steps:
       # Checkout the repo
@@ -256,3 +267,23 @@ jobs:
         run: |
           cargo run --no-default-features --features "${FEATURES}" --example simple_job_no_future
       # End Run example
+
+
+      # Run the extended thread example when Croner is selected
+      - name: "Run extended_thread: ${{ matrix.features }}"
+        if: ${{ contains(matrix.features, 'croner') }}
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example extended_thread
+
+
+      # Run the native async example when the Tokio feature is selected
+      - name: "Run extended_tokio: ${{ matrix.features }}"
+        if: ${{ contains(matrix.features, 'tokio') }}
+        shell: bash
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo run --no-default-features --features "${FEATURES}" --example extended_tokio

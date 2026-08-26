@@ -91,6 +91,55 @@ To use croner just change your `Cargo.toml` to the following:
 job_scheduler_ng = { version = "2", default-features = false, features = ["croner"] }
 ```
 
+Croner also enables extended expressions such as `L` for the last day of a
+month. For example, `0 0 23 L * *` runs at 23:00 on every month's last day.
+
+Optional features remain opt-in:
+
+| Feature | Purpose |
+| --- | --- |
+| `croner` | Extended cron syntax including `L`, `W`, and `#` |
+| `timezones` | Named IANA time zones through `chrono-tz` |
+| `tokio` | Native async jobs and an event-driven Tokio runner |
+
+Tokio is not downloaded or compiled for synchronous-only users:
+
+```toml
+[dependencies]
+# Thread/manual scheduler, no Tokio dependency
+job_scheduler_ng = { version = "2", default-features = false, features = ["croner", "timezones"] }
+
+# Native async scheduler
+job_scheduler_ng = { version = "2", default-features = false, features = ["croner", "timezones", "tokio"] }
+```
+
+Besides cron, jobs can run once, use a fixed rate, or wait until the previous
+run finishes. Calendar intervals support years through seconds:
+
+```rust
+use job_scheduler_ng::{CalendarInterval, Job, JobScheduler, ThreadRunner};
+
+let interval = CalendarInterval::builder()
+    .days(1)
+    .hours(2)
+    .build()?;
+let mut scheduler = JobScheduler::new();
+scheduler.add_named(
+    "refresh",
+    Job::fixed_delay(interval.into(), || println!("refresh")),
+)?;
+
+let runner = ThreadRunner::start(scheduler)?;
+runner.handle().run_now_named("refresh")?;
+runner.shutdown()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`ThreadRunner` waits on its control channel until the next deadline, so adding,
+pausing, resuming, rescheduling, or removing a job wakes it immediately. The
+manual `tick()` API remains available for event loops that want to own the
+scheduler thread.
+
 The scheduling format is as follows:
 
 ```text
