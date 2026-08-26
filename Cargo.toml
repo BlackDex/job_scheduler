@@ -17,6 +17,7 @@ include = [
     "Cargo.toml",
     "LICENSE-APACHE",
     "LICENSE-MIT",
+    "examples/**/*.rs",
     "src/**/*.rs"
 ]
 
@@ -24,15 +25,28 @@ include = [
 default = ["cron"]
 croner = ["dep:croner"]
 cron = ["dep:cron"]
+timezones = ["dep:chrono-tz"]
+tokio = ["dep:tokio", "dep:futures-util"]
 
 [dependencies]
 croner = { version = "3.0.1", optional = true }
 cron = { version = "0.17.0", optional = true }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+chrono-tz = { version = "0.10.4", optional = true }
+futures-util = { version = "0.3.31", default-features = false, features = ["std"], optional = true }
+tokio = { version = ">=1.53", default-features = false, features = ["macros", "rt", "sync", "time"], optional = true }
 uuid = { version = "1.24.0", default-features = false, features = ["v4"] }
 
 [dev-dependencies]
-tokio = { version = ">=1.53", default-features = false, features = ["macros", "time", "rt-multi-thread"] }
+tokio = { version = ">=1.53", default-features = false, features = ["macros", "time", "rt-multi-thread", "sync"] }
+
+[[example]]
+name = "extended_thread"
+required-features = ["croner"]
+
+[[example]]
+name = "extended_tokio"
+required-features = ["croner", "tokio"]
 
 # Linting config
 # https://doc.rust-lang.org/rustc/lints/groups.html
